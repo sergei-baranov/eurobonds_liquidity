@@ -1,0 +1,20 @@
+version: "3"
+services:
+  analytics-consumer:
+    build:
+      context: ./consumer
+      dockerfile: Dockerfile-analytics
+    networks:
+      - eurobonds-liquidity-network
+    ports:
+      - "4040:4040"
+    volumes:
+      - delta:/storage
+      - shara:/shara
+networks:
+  eurobonds-liquidity-network:
+    external:
+      name: eurobonds-liquidity-network
+volumes:
+  delta:
+  shara:

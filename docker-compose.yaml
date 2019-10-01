@@ -1,0 +1,37 @@
+version: '3'
+services:
+  producer:
+    depends_on:
+      - kafka
+    build:
+      context: ./transporter
+    networks:
+      - eurobonds-liquidity-network
+    volumes:
+      - delta:/storage
+      - shara:/shara
+  kafka:
+    image: spotify/kafka
+    networks:
+      - eurobonds-liquidity-network
+    volumes:
+      - delta:/storage
+      - shara:/shara
+#  postgres:
+#    image: postgres
+#    environment:
+#      - POSTGRES_USER=consumer
+#      - POSTGRES_DB=consumer
+#      - POSTGRES_PASSWORD=goto@Postgres1
+#    ports:
+#      - "5432:5432"
+#    networks:
+#      - eurobonds-liquidity-network
+networks:
+  eurobonds-liquidity-network:
+    external:
+      name: eurobonds-liquidity-network
+
+volumes:
+  delta:
+  shara:
