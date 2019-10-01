@@ -117,7 +117,7 @@ object Runner extends App with LazyLogging {
 
     //
 
-    if (!needStreamJob) {
+    if (true || !needStreamJob) {
       logger.info("Need no stream consumer before 10:00 MSK")
       sys.exit()
     }
