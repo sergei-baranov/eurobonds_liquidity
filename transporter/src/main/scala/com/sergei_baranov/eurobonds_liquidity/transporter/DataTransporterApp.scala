@@ -104,13 +104,11 @@ object DataTransporterApp extends App with StrictLogging {
   props.put("acks", "all")
   props.put("metadata.max.age.ms", "10000")
 
+
   val producer = new KafkaProducer[String, String](props)
   producer.flush()
 
   logger.info("Kafka producer initialized")
-
-  //val data = new ProducerRecord[String, String]("eurobonds-quotes-topic", "boo:moo")
-  //producer.send(data)
 
   // Поток в Кафку мы получим из интрадей делейед - котировок
   // Это котировки с задержкой в несколько [десятков] минут

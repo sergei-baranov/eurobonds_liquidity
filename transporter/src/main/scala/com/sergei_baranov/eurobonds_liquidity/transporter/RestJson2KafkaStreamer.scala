@@ -28,18 +28,19 @@ import org.json4s.DefaultFormats
  * на той стороне)
  *
  * @param MyCurrentAuthenticator
+ * @param producer
  */
 class RestJson2KafkaStreamer(
-                              MyCurrentAuthenticator: MyAuthenticator,
-                              producer: KafkaProducer[String, String]
+                              val MyCurrentAuthenticator: MyAuthenticator,
+                              val producer: KafkaProducer[String, String]
                             ) extends Actor with ActorLogging {
 
   import akka.pattern.pipe
   import context.dispatcher
 
   val reqUri = "https://ws.cbonds.info/services/json/get_tradings_realtime/?lang=eng"
-  val reqBody = "{\"auth\":{\"login\":\"" + MyCurrentAuthenticator.getAuthUserName + "\"," +
-    "\"password\":\"" + MyCurrentAuthenticator.getAuthPassword + "\"}," +
+  val reqBody = "{\"auth\":{\"login\":\"" + this.MyCurrentAuthenticator.getAuthUserName + "\"," +
+    "\"password\":\"" + this.MyCurrentAuthenticator.getAuthPassword + "\"}," +
     "\"filters\":[],\"quantity\":{\"limit\":1000,\"offset\":0}," +
     "\"sorting\":[{\"field\":\"emission_id\",\"order\":\"asc\"}]}"
 
@@ -138,12 +139,13 @@ class RestJson2KafkaStreamer(
                 "eurobonds-quotes-topic",
                 Json(DefaultFormats).write(eventData)
               )
-              producer.send(data)
+              this.producer.send(data)
               log.info("event sent ("+ itemValid.getOrElse("id", 0) +")")
             }
             case _ => log.info("item bad match")
           }
         }
+        //this.producer.flush()
       }
       case _ => log.info("itemsColl bad match")
     }

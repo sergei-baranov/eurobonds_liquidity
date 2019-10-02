@@ -13,6 +13,13 @@ import org.apache.spark.sql.types._
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions.{avg, broadcast, collect_list, concat_ws, count, first, split, sum}
 
+import sys.process._
+import java.io.File
+import java.net.{Authenticator, PasswordAuthentication, URL}
+
+import com.typesafe.scalalogging.StrictLogging
+import org.apache.commons.io.FileUtils
+
 object CalcAnchorDate {
   def calcHour(): Int = {
     val Cal = Calendar.getInstance(TimeZone.getTimeZone("GMT"))
@@ -60,6 +67,10 @@ object AnalyticsConsumer extends App with LazyLogging {
     "/shara/liquidity/csv_" + todayDate + "/"
   )
 
+  "rm -rf " + outputFolder !!
+
+  "rm -rf " + outputFolderCsv !!
+
   val conf = new SparkConf()
     .setMaster("local")
     .setAppName(appName)
@@ -80,7 +91,8 @@ object Runner extends App with LazyLogging {
           outputFolderCsv: String,
           needStreamJob: Boolean = false
          ): Unit = {
-    val spark = {
+
+    val spark: SparkSession = {
       SparkSession.builder()
         .config(conf)
         .master("local[*]")
@@ -109,21 +121,37 @@ object Runner extends App with LazyLogging {
 
     bondsLiquidityMetrics.show(20)
     bondsLiquidityMetrics.printSchema()
+
     bondsLiquidityMetrics.coalesce(1)
       .write.format("parquet").save(outputFolder)
+
     bondsLiquidityMetrics.coalesce(1)
       .write.format("com.databricks.spark.csv")
       .option("header", "true").save(outputFolderCsv)
 
     //
+    bondsLiquidityMetrics.sparkSession.stop()
 
-    if (true || !needStreamJob) {
+    //
+
+    if (false && !needStreamJob) {
       logger.info("Need no stream consumer before 10:00 MSK")
       sys.exit()
     }
     /** @TODO start stream structured job */
 
     // 2. stream structured job (enrich bonds quotes stream with liquidity metrics)
+
+    // вот тут он будет работать
+    // до бесконечности
+    /**
+     * @TODO условия выхода в jobber-е
+     * @TODO как получать от него выход с некоторой периодичностью?
+     * Как гасить его отсюда?
+     * разобраться
+     */
+    QuotesStreamJobber.enrichLiquidityWithIntradayQuotes(bondsLiquidityMetrics)
+
     /*
     val spark: SparkSession = SparkSession.builder()
       .appName(appName)
