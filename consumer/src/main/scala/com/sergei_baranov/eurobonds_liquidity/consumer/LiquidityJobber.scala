@@ -2,11 +2,9 @@ package com.sergei_baranov.eurobonds_liquidity.consumer
 
 import java.util.Calendar
 
-import org.apache.spark.sql._
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.{DataFrame, SparkSession}
 import org.apache.spark.sql.functions._
-import org.apache.spark.sql.functions.{avg, collect_list, concat_ws, count, first, split, sum}
 import org.apache.spark.sql.types._
 
 object LiquidityJobber {
@@ -156,7 +154,11 @@ FROM BASpread GROUP BY bond, `date`""")
 FROM MedianByBondAndDate GROUP BY bond""")
     val cntDfBASpreadRelativeMedian = dfBASpreadRelativeMedian.count()
     // и rank по ней
-    val winRnkBaspread = Window.orderBy($"bid_ask_spread_relative_median".desc)
+    /*
+    partitionBy(lit(0)) - против "No Partition Defined for Window operation! Moving all data to a single partition"
+    https://stackoverflow.com/questions/41313488/avoid-performance-impact-of-a-single-partition-mode-in-spark-window-functions
+    */
+    val winRnkBaspread = Window.partitionBy(lit(0)).orderBy($"bid_ask_spread_relative_median".desc)
     val dfBASpreadRank = dfBASpreadRelativeMedian
       .sort($"bid_ask_spread_relative_median".desc)
       .withColumn("total", lit(cntDfBASpreadRelativeMedian))
@@ -185,7 +187,7 @@ FROM MedianByBondAndDate GROUP BY bond""")
         )
         .select($"id", $"isin", $"date_of_end_placing", $"maturity_date", $"usd_volume",
           $"bid_ask_spread_relative_median", $"bid_ask_spread_relative_rank")
-        .orderBy($"bid_ask_spread_relative_median".desc)
+        .orderBy($"id".asc)
     dfBASpreadRelativeMedian.unpersist()
 
     //

@@ -6,13 +6,14 @@ import org.apache.spark.sql.functions.from_json
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.streaming.{DataStreamReader, DataStreamWriter, Trigger}
+import org.apache.spark.sql.expressions.Window
 
 object QuotesStreamJobber extends App with LazyLogging {
   /**
    *
-   * @param bondsLiquidityMetrics
+   * @param bondsLiquidityMetricsDirPathCsv
    */
-  def enrichLiquidityWithIntradayQuotes(bondsLiquidityMetrics: DataFrame): Unit = {
+  def enrichLiquidityWithIntradayQuotes(bondsLiquidityMetricsDirPathCsv: String): Unit = {
 
     logger.info("getOrCreate SparkSession")
     println("getOrCreate SparkSession")
@@ -54,34 +55,118 @@ object QuotesStreamJobber extends App with LazyLogging {
     logger.info("loaded")
     println("loaded")
 
-    val expectedSchema = new StructType()
-      .add(StructField("id", LongType))
-      .add(StructField("bond", LongType))
-      .add(StructField("bid", DoubleType))
-      .add(StructField("ask", DoubleType))
-      .add(StructField("tg", LongType))
-      .add(StructField("date", TimestampType))
-      .add(StructField("update_ts", TimestampType))
-      .add(StructField("volume", DoubleType))
-      .add(StructField("volume_money", DoubleType))
-      .add(StructField("overturn", DoubleType))
+    val bondsLiquidityMetrics = spark
+      .read
+      .option("header", "true")
+      .option("inferSchema", "true")
+      .csv(bondsLiquidityMetricsDirPathCsv)
+    // broadcast - с метриками будем джойнить поток
+    val bondsLiquidityMetricsBroadcasted = broadcast(bondsLiquidityMetrics)
 
+    // https://databricks.com/blog/2017/02/23/working-complex-data-formats-structured-streaming-apache-spark-2-1.html
+    // https://spark.apache.org/docs/latest/structured-streaming-programming-guide.html#window-operations-on-event-time
+    // http://vishnuviswanath.com/spark_structured_streaming.html
+    // https://stackoverflow.com/questions/45205969/update-ttl-for-a-particular-topic-in-kafka-using-java
+    // https://databricks.com/blog/2017/05/08/event-time-aggregation-watermarking-apache-sparks-structured-streaming.html
+    // https://databricks.com/blog/2018/03/13/introducing-stream-stream-joins-in-apache-spark-2-3.html
+
+    val expectedSchema = new StructType()
+      .add(StructField("id", StringType)) // LongType
+      .add(StructField("bond", StringType)) // LongType
+      .add(StructField("bid", StringType)) // DoubleType
+      .add(StructField("ask", StringType)) // DoubleType
+      .add(StructField("tg", StringType)) // LongType
+      .add(StructField("date", StringType)) // TimestampType
+      .add(StructField("update_ts", StringType)) // TimestampType
+      .add(StructField("volume", StringType)) // DoubleType
+      .add(StructField("volume_money", StringType)) // DoubleType
+      .add(StructField("overturn", StringType)) // DoubleType
+
+    /*
+    Тут пока достаточно искусственная задача - обогащать метрики ликвидности значениями
+    текущего объёма торгов
+    Искусственная - потому что на входе поток не совсем корректный, для обучения взяли,
+    что есть, далее на источние кое-что поменяем по ходу доработки проекта и методологии
+    */
+    //val winByTsDesc = Window.partitionBy($"bond", $"tg").orderBy($"update_ts".desc_nulls_last)
+    val watermarkMinutes = 120;
+    val winDurationMinutes = 30;
+    val slideDurationMinutes = 1;
+    val triggerProcTimeMinutes = 1; // пускай выдаёт пустые, для наглядности, что не исдох
     val transformedStream: DataFrame = inDf
-      .selectExpr("CAST(key AS STRING)", "CAST(value AS STRING)")
-        .as[(String, String)]
-      .select($"value")
-      //.select(from_json($"value", expectedSchema).as("data"))
-      //.select("data.*")
-      //.withWatermark("update_ts", "60 minutes")
-    /**
-     * @TODO from_json заполняет всё null-ами. Продолжить с этого места
-     */
+      .selectExpr("CAST(key AS STRING)", "CAST(value AS STRING)", "CAST(timestamp AS STRING)")
+        .as[(String, String, String)]
+      .select($"value", $"timestamp")
+      .select(from_json($"value", expectedSchema).as("data"))
+      .select("data.*")
+      .select(
+        $"bond".cast(LongType).as("bond"),
+        $"tg".cast(LongType).as("tg"),
+        $"volume_money".cast(DoubleType).as("volume_money"),
+        $"bid".cast(DoubleType).as("bid"),
+        $"ask".cast(DoubleType).as("ask"),
+        $"overturn".cast(DoubleType).as("overturn"),
+        //$"date".as("date_str"),
+        $"date".cast(DateType).as("date"),
+        //$"update_ts".as("update_ts_str"),
+        $"update_ts".cast(TimestampType).as("update_ts")
+      )
+      .filter(
+        $"bond".isNotNull
+        && $"tg".isNotNull
+      )
+      .withWatermark("update_ts", watermarkMinutes + " minutes")
+      .groupBy(
+        window(
+          $"update_ts",
+          winDurationMinutes + " minutes",
+          slideDurationMinutes + " minutes"
+        )
+        ,$"bond", $"tg", $"date"
+      )
+      .agg(
+        first($"bond").as("q_bond"),
+        first($"tg").as("q_tg"),
+        first($"date").as("q_date"),
+        sum($"volume_money").as("date_sum_volume_money"),
+        max($"bid").as("date_max_bid"),
+        max($"ask").as("date_max_ask"),
+        max($"update_ts").as("last_update_ts"),
+        count($"update_ts").as("cnt")
+      )
+      .select(
+        $"q_bond", $"q_tg", $"q_date",
+        $"date_sum_volume_money", $"date_max_bid", $"date_max_ask",
+        $"last_update_ts", $"cnt"
+      )
+      //.filter($"cnt" === 1) // чтобы не агрегировать лишнее
+      .select("*")
+      .as("quot")
+      .join(
+        bondsLiquidityMetricsBroadcasted.as("liq"),
+        $"liq.id" === $"quot.q_bond",
+        "left"
+      )
+      .select(
+        $"q_bond".as("bond"),
+        $"isin",
+        $"q_tg".as("tg"),
+        $"q_date".as("date"),
+        $"date_sum_volume_money".as("volume_money"),
+        $"date_max_bid".as("bid"),
+        $"date_max_ask".as("ask"),
+        $"last_update_ts".as("update_ts"),
+        $"bid_ask_spread_relative_median".as("baspread_rel_median"),
+        $"bid_ask_spread_relative_rank".as("baspread_rel_rank"),
+        $"cnt"
+      )
+      //.orderBy($"last_update_ts".desc)
 
     transformedStream
       .writeStream
       .outputMode("append")
       .format("console") // "delta"
-      .trigger(Trigger.ProcessingTime("30 seconds"))
+      //.trigger(Trigger.ProcessingTime(triggerProcTimeMinutes + " minutes"))
       .start()
 
     /**

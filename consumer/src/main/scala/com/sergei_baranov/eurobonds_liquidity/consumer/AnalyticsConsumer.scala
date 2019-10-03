@@ -1,24 +1,13 @@
 package com.sergei_baranov.eurobonds_liquidity.consumer
 
-import java.util.{Calendar, Properties, TimeZone}
+import java.util.{Calendar, TimeZone}
 import java.text.SimpleDateFormat
-
-import com.typesafe.scalalogging._
 
 import com.typesafe.scalalogging.LazyLogging
 import org.apache.spark.SparkConf
-import org.apache.spark.sql.{DataFrame, SparkSession}
-import org.apache.spark.sql.functions.from_json
-import org.apache.spark.sql.types._
-import org.apache.spark.sql.expressions.Window
-import org.apache.spark.sql.functions.{avg, broadcast, collect_list, concat_ws, count, first, split, sum}
+import org.apache.spark.sql.{SparkSession}
 
 import sys.process._
-import java.io.File
-import java.net.{Authenticator, PasswordAuthentication, URL}
-
-import com.typesafe.scalalogging.StrictLogging
-import org.apache.commons.io.FileUtils
 
 object CalcAnchorDate {
   def calcHour(): Int = {
@@ -40,8 +29,7 @@ object CalcAnchorDate {
       timezoneAlteredTime -= 86400000;
     }
     Cal.setTimeInMillis(timezoneAlteredTime)
-    var dtMillis = Cal.getTime()
-    //logger.info("dtMillis: " + dtMillis)
+    val dtMillis = Cal.getTime()
     val todayDate = (format.format(dtMillis))
 
     todayDate
@@ -130,6 +118,7 @@ object Runner extends App with LazyLogging {
       .option("header", "true").save(outputFolderCsv)
 
     //
+    bondsLiquidityMetrics.unpersist()
     bondsLiquidityMetrics.sparkSession.stop()
 
     //
@@ -138,7 +127,6 @@ object Runner extends App with LazyLogging {
       logger.info("Need no stream consumer before 10:00 MSK")
       sys.exit()
     }
-    /** @TODO start stream structured job */
 
     // 2. stream structured job (enrich bonds quotes stream with liquidity metrics)
 
@@ -150,35 +138,6 @@ object Runner extends App with LazyLogging {
      * Как гасить его отсюда?
      * разобраться
      */
-    QuotesStreamJobber.enrichLiquidityWithIntradayQuotes(bondsLiquidityMetrics)
-
-    /*
-    val spark: SparkSession = SparkSession.builder()
-      .appName(appName)
-      .config("spark.driver.memory", "5g")
-      .master("local[2]")
-      .getOrCreate()
-    spark.sparkContext.setLogLevel("WARN")
-
-    logger.info("Initializing Structured consumer")
-
-    val inputStream = spark.readStream
-      .format("kafka")
-      .option("kafka.bootstrap.servers", "kafka:9092")
-      .option("subscribe", "eurobonds-quotes-topic")
-      .option("startingOffsets", "earliest")
-      .load()
-
-    // please edit the code below
-    val transformedStream: DataFrame = inputStream
-
-    transformedStream.writeStream
-      .outputMode("append")
-      .format("delta")
-      .option("checkpointLocation", "/storage/analytics-consumer/checkpoints")
-      .start("/storage/analytics-consumer/output")
-
-    spark.streams.awaitAnyTermination()
-    */
+    QuotesStreamJobber.enrichLiquidityWithIntradayQuotes(outputFolderCsv)
   }
 }

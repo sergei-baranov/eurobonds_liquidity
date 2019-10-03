@@ -5,15 +5,9 @@ import akka.http.scaladsl.Http
 import akka.http.scaladsl.model.{ContentTypes, HttpEntity, HttpMethods, HttpRequest, HttpResponse, StatusCodes}
 import akka.stream.{ActorMaterializer, ActorMaterializerSettings}
 import akka.util.ByteString
-import java.util.{Calendar, Properties, TimeZone}
-import java.text.SimpleDateFormat
-import java.util
 
-import akka.NotUsed
-import akka.actor.{Actor, ActorLogging, ActorSystem, Props}
-import com.typesafe.scalalogging._
+import akka.actor.{Actor, ActorLogging}
 import org.apache.kafka.clients.producer.{KafkaProducer, ProducerRecord}
-import com.typesafe.scalalogging._
 import org.json4s._
 import org.json4s.jackson.JsonMethods._
 import org.json4s.native.Json

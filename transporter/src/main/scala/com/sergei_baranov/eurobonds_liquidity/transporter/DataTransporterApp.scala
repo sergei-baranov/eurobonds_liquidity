@@ -3,35 +3,12 @@ package com.sergei_baranov.eurobonds_liquidity.transporter
 import java.util.{Calendar, Properties, TimeZone}
 import java.text.SimpleDateFormat
 
-import akka.NotUsed
-import akka.actor.{Actor, ActorLogging, ActorSystem, Props}
-import akka.http.scaladsl.Http
-import akka.http.scaladsl.client.RequestBuilding.Get
-import akka.http.scaladsl.model.sse.ServerSentEvent
-import akka.http.scaladsl.unmarshalling.Unmarshal
-import akka.stream.ActorMaterializer
-import akka.stream.scaladsl.{RestartSource, Source}
+import akka.actor.{Props}
+
 import com.typesafe.scalalogging._
-import org.apache.kafka.clients.producer.{KafkaProducer, ProducerRecord}
-import akka.http.scaladsl.model.{ContentTypes, HttpEntity, HttpMethods, HttpRequest, HttpResponse, ResponseEntity}
+import org.apache.kafka.clients.producer.{KafkaProducer}
 
-import scala.concurrent.{Await, Future}
-import scala.util.{Failure, Success}
-import scala.concurrent.duration._
-import java.net.URL
-import java.io.File
-
-import org.apache.commons.io.FileUtils
 import java.net.Authenticator
-import java.net.PasswordAuthentication
-
-import akka.http.scaladsl.unmarshalling.sse.EventStreamUnmarshalling._
-
-import sys.process._
-import akka.http.scaladsl.Http
-import akka.http.scaladsl.model._
-import akka.stream.{ActorMaterializer, ActorMaterializerSettings}
-import akka.util.{ByteString, Timeout}
 
 import akka.actor.ActorSystem
 
@@ -55,8 +32,7 @@ object CalcAnchorDate {
       timezoneAlteredTime -= 86400000;
     }
     Cal.setTimeInMillis(timezoneAlteredTime)
-    var dtMillis = Cal.getTime()
-    //logger.info("dtMillis: " + dtMillis)
+    val dtMillis = Cal.getTime()
     val todayDate = (format.format(dtMillis))
 
     todayDate
@@ -71,8 +47,11 @@ object DataTransporterApp extends App with StrictLogging {
   val MyCurrentAuthenticator = new MyAuthenticator(cbonds_username, cbonds_password)
   Authenticator.setDefault(MyCurrentAuthenticator)
 
-  // до 10-ти утра по МСК не надо работать стримы,
-  // а данные для батчей брать, но на вчера
+  // до 10-ти утра по МСК не надо работать стримы
+  // (пока не решили точно,
+  // сейчас стримы тоже работаем кроглосуточно,
+  // далее по коду if (false &&), if (true ||)),
+  // а данные для батчей брать, но на вчера по МСК
   val nowHour = CalcAnchorDate.calcHour()
   logger.info("nowHour: [" + nowHour + "]")
   // соответственно todayDate до 10-тичасов содержит вчерашнюю дату
@@ -85,7 +64,6 @@ object DataTransporterApp extends App with StrictLogging {
   Stager4Batch.mkJob()
 
   // теперь организовываем поток в кафку
-  // но не ранее 10-ти часов по Мск
   if (false && nowHour < 10) {
     logger.info("Need no stream transporter before 10:00 MSK")
     sys.exit(0) /** @TODO как убить ещё и кафку? */
