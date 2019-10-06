@@ -17,16 +17,6 @@ services:
     volumes:
       - delta:/storage
       - shara:/shara
-#  postgres:
-#    image: postgres
-#    environment:
-#      - POSTGRES_USER=consumer
-#      - POSTGRES_DB=consumer
-#      - POSTGRES_PASSWORD=goto@Postgres1
-#    ports:
-#      - "5432:5432"
-#    networks:
-#      - eurobonds-liquidity-network
 networks:
   eurobonds-liquidity-network:
     external:

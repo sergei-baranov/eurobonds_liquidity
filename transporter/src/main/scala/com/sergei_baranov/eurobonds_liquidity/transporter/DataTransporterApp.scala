@@ -62,6 +62,7 @@ object DataTransporterApp extends App with StrictLogging {
   logger.info("Download data for batch jobber")
   val Stager4Batch = new Stage4Batch(MyCurrentAuthenticator, todayDate)
   Stager4Batch.mkJob()
+  logger.info("Data for batch jobber downloaded")
 
   // теперь организовываем поток в кафку
   if (false && nowHour < 10) {

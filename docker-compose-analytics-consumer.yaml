@@ -1,5 +1,31 @@
 version: "3"
 services:
+  db:
+    image: mariadb:10.2
+    restart: always
+    networks:
+      - eurobonds-liquidity-network
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./db:/var/lib/mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: test
+      MYSQL_DATABASE: test
+      MYSQL_USER: test
+      MYSQL_PASSWORD: test
+  jupyter-local:
+    build: ./jupyter-local
+    networks:
+      - eurobonds-liquidity-network
+    ports:
+      - "8888:8888"
+    links:
+      - db:db
+    volumes:
+      - delta:/storage
+      - shara:/shara
+      - ./jupyter-local/notebooks:/home/jovyan/work
   analytics-consumer:
     build:
       context: ./consumer
@@ -8,6 +34,8 @@ services:
       - eurobonds-liquidity-network
     ports:
       - "4040:4040"
+    links:
+      - db:db
     volumes:
       - delta:/storage
       - shara:/shara

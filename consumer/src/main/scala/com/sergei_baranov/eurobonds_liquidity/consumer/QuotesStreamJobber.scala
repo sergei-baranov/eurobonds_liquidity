@@ -7,13 +7,14 @@ import org.apache.spark.sql.types._
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.streaming.{DataStreamReader, DataStreamWriter, Trigger}
 import org.apache.spark.sql.expressions.Window
+import org.apache.spark.sql.ForeachWriter
 
 object QuotesStreamJobber extends App with LazyLogging {
   /**
    *
    * @param bondsLiquidityMetricsDirPathCsv
    */
-  def enrichLiquidityWithIntradayQuotes(bondsLiquidityMetricsDirPathCsv: String): Unit = {
+  def enrichLiquidityWithIntradayQuotes(bondsLiquidityMetricsDirPathCsv: String, outputFolderDelta: String): Unit = {
 
     logger.info("getOrCreate SparkSession")
     println("getOrCreate SparkSession")
@@ -60,6 +61,29 @@ object QuotesStreamJobber extends App with LazyLogging {
       .option("header", "true")
       .option("inferSchema", "true")
       .csv(bondsLiquidityMetricsDirPathCsv)
+      // вот такая ерунда у меня на домашней машине (убунта + мариядб),
+      // timestamp почему-то в 32 бита, пока что ставлю заплату в коде
+      /*
+      // закомментировано, так как стрим в МуСкул мне настроить не удалось
+      .withColumn(
+        "maturity_date",
+        when(
+          (
+            col("maturity_date") > "2037-12-30 00:00:00"
+            ),
+          "1970-01-01 04:00:01")
+          .otherwise(col("maturity_date"))
+      )
+      .withColumn(
+        "date_of_end_placing",
+        when(
+          (
+            col("date_of_end_placing") > "2037-12-30 00:00:00"
+            ),
+          "1970-01-01 04:00:01")
+          .otherwise(col("date_of_end_placing"))
+      )
+      */
     // broadcast - с метриками будем джойнить поток
     val bondsLiquidityMetricsBroadcasted = broadcast(bondsLiquidityMetrics)
 
@@ -162,25 +186,35 @@ object QuotesStreamJobber extends App with LazyLogging {
       )
       //.orderBy($"last_update_ts".desc)
 
-    transformedStream
-      .writeStream
-      .outputMode("append")
-      .format("console") // "delta"
-      //.trigger(Trigger.ProcessingTime(triggerProcTimeMinutes + " minutes"))
-      .start()
-
-    /**
-     * @TODO отправлять это всё надо в МуСкул на апсерт, то есть в кафку в jdbc silk connector
-     * Вопрос: как по дороге сохранять ещё и на локалке, например в дельту?
-     */
-
-    /*
     transformedStream.writeStream
       .outputMode("append")
       .format("delta")
-      .trigger(Trigger.ProcessingTime("5 minutes"))
+      //.trigger(Trigger.ProcessingTime(triggerProcTimeMinutes + " minutes"))
       .option("checkpointLocation", "/storage/analytics-consumer/checkpoints")
-      .start("/storage/analytics-consumer/output/csv")
+      .start(outputFolderDelta)
+
+    /*
+    val url = "jdbc:mysql://db:3306/test"
+    val user ="test"
+    val pwd = "test"
+
+    val writer = new JDBCSink(url, user, pwd)
+    val query =
+      transformedStream
+        .writeStream
+        .foreach(writer)
+        .outputMode("update")
+        //.trigger(triggerProcTimeMinutes + " minutes")
+        .start()
+    */
+
+    /*
+    transformedStream
+      .writeStream
+      .outputMode("append")
+      .format("console")
+      //.trigger(Trigger.ProcessingTime(triggerProcTimeMinutes + " minutes"))
+      .start()
     */
 
     spark.streams.awaitAnyTermination()
